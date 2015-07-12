@@ -10,12 +10,12 @@ import re
 from io import StringIO
 import csv
 import operator
+from collections import Counter
 
 import numpy as np
-from PIL import Image
-from matplotlib import pyplot as plt
-from matplotlib import patches
-from matplotlib.ticker import MultipleLocator, FormatStrFormatter
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+# from PIL import Image
 
 from .interval import Interval
 from .legend import Legend
@@ -204,6 +204,27 @@ class Striplog(object):
         return self
 
     @classmethod
+    def __loglike_from_image(self, filename, offset):
+        """
+        Get a log-like stream of RGB values from an image.
+
+        Args:
+            filename (str): The filename of a PNG image.
+
+        Returns:
+            ndarray: A 2d array (a column of RGB triples) at the specified
+            offset.
+
+        TODO:
+            Generalize this to extract 'logs' from images in other ways, such
+            as giving the mean of a range of pixel columns, or an array of
+            columns. See also a similar routine in pythonanywhere/freqbot.
+        """
+        im = plt.imread(filename)
+        col = im.shape[1]/(100./offset)
+        return im[:, col, :3]
+
+    @classmethod
     def __intervals_from_loglike(self, loglike, offset=2):
         """
         Take a log-like stream of numbers or strings,
@@ -354,9 +375,7 @@ class Striplog(object):
         Returns:
             Striplog: The ``striplog`` object.
         """
-        im = np.array(Image.open(filename))
-        col = im.shape[1]/(100./offset)
-        rgb = im[:, col, :3]
+        rgb = cls.__loglike_from_image(filename, offset)
         loglike = np.array([utils.rgb_to_hex(t) for t in rgb])
 
         # Get the pixels and colour values at 'tops' (i.e. changes).
@@ -593,7 +612,7 @@ class Striplog(object):
             else:
                 w = d
 
-            rect = patches.Rectangle(origin, w, thick, color=colour)
+            rect = mpl.patches.Rectangle(origin, w, thick, color=colour)
             ax.add_patch(rect)
 
         return ax
@@ -621,22 +640,18 @@ class Striplog(object):
         Returns:
             None: The plot is a side-effect.
         """
-        fig = plt.figure(figsize=(width, aspect*width))
-
-        # And a series of Rectangle patches for the striplog.
-        ax = fig.add_axes([0, 0, 1, 1])
-
         if not legend:
             # Build a random-coloured legend.
             comps = [i[0] for i in self.top if i[0]]
             legend = Legend.random(comps)
 
+        fig = plt.figure(figsize=(width, aspect*width))
+        ax = fig.add_axes([0, 0, 1, 1])
         self.plot_axis(ax=ax,
                        legend=legend,
                        ladder=ladder,
                        default_width=width,
                        match_only=match_only)
-
         ax.set_xlim([0, width])
         ax.set_ylim([self.stop, self.start])
         ax.set_xticks([])
@@ -644,11 +659,11 @@ class Striplog(object):
         if type(interval) is int:
             interval = (1, interval)
 
-        minorLocator = MultipleLocator(interval[0])
+        minorLocator = mpl.ticker.MultipleLocator(interval[0])
         ax.yaxis.set_minor_locator(minorLocator)
 
-        majorLocator = MultipleLocator(interval[1])
-        majorFormatter = FormatStrFormatter('%d')
+        majorLocator = mpl.ticker.MultipleLocator(interval[1])
+        majorFormatter = mpl.ticker.FormatStrFormatter('%d')
         ax.yaxis.set_major_locator(majorLocator)
         ax.yaxis.set_major_formatter(majorFormatter)
 
@@ -664,9 +679,10 @@ class Striplog(object):
 
         return None
 
-    def depth(self, d):
+    def read_at(self, d):
         """
-        Get the interval at a particular depth.
+        Get the interval at a particular 'depth' (though this might be an
+            elevation or age or anything.
 
         Args:
             d (Number): The depth to query.
@@ -679,6 +695,8 @@ class Striplog(object):
             if iv.top <= d <= iv.base:
                 return iv
         return None
+
+    depth = read_at  # For backwards compatibility.
 
     def find(self, search_term):
         """
@@ -813,7 +831,12 @@ class Striplog(object):
         if index:
             return indices
         else:
-            return self[indices]
+            if n == 1:
+                # Then return an inveral
+                i = indices[0]
+                return self[i]
+            else:
+                return self[indices]
 
     def thinnest(self, n=1, index=False):
         """
@@ -828,7 +851,52 @@ class Striplog(object):
         if index:
             return indices
         else:
-            return self[indices]
+            if n == 1:
+                i = indices[0]
+                return self[i]
+            else:
+                return self[indices]
+
+    def histogram(self, interval=1.0, lumping=None, summary=False, sort=True):
+        """
+        Returns the data for a histogram. Does not plot anything.
+
+        Args:
+            interval (float): The sample interval; small numbers mean big bins.
+            lumping (str): If given, the bins will be lumped based on this
+                attribute of the primary components of the intervals encount-
+                ered.
+            summary (bool): If True, the summaries of the components are
+                returned as the bins. Otherwise, the default behaviour is to
+                return the Components themselves.
+            sort (bool): If True (default), the histogram is sorted by value,
+                starting with the largest.
+
+        Returns:
+            Tuple: A tuple of tuples of entities and counts.
+
+        TODO:
+            Deal with numeric properties, so I can histogram 'Vp' values, say.
+        """
+        d_list = np.arange(self.start, self.stop, interval)
+        raw_readings = []
+        for d in d_list:
+            if lumping:
+                x = self.read_at(d).primary[lumping]
+            else:
+                if summary:
+                    x = self.read_at(d).primary.summary()
+                else:
+                    x = self.read_at(d).primary            
+            raw_readings.append(x)
+        c = Counter(raw_readings)
+        entities, counts = tuple(c.keys()), tuple(c.values())
+
+        if sort:
+            z = zip(counts, entities)
+            counts, entities = zip(*sorted(z, reverse=True))
+         
+        return entities, counts
 
     @property
     def cum(self):

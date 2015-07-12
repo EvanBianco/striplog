@@ -10,11 +10,11 @@ Defines a legend for displaying components.
 from io import StringIO
 import csv
 import warnings
+import random
+import math
 
-import numpy as np
-from matplotlib import pyplot as plt
 from matplotlib import patches
-from matplotlib.colors import rgb2hex
+import matplotlib.pyplot as plt
 
 from .component import Component
 from . import utils
@@ -84,9 +84,9 @@ class Decor(object):
         # the use of matplotlib's English-language colour names.
         c = getattr(self, 'colour', None)
         if c is not None:
-            if type(c) in [list, tuple, np.ndarray]:
+            if type(c) in [list, tuple]:
                 try:
-                    self.colour = rgb2hex(c)
+                    self.colour = utils.rgb_to_hex(c)
                 except TypeError:
                     raise LegendError("Colour not recognized: " + c)
             elif c[0] != '#':
@@ -95,6 +95,7 @@ class Decor(object):
                 except KeyError:
                     raise LegendError("Colour not recognized: " + c)
             elif len(c) == 4:
+                # Three-letter hex
                 try:
                     self.colour = c[:2] + c[1] + 2*c[2] + 2*c[3]
                 except TypeError:
@@ -153,7 +154,7 @@ class Decor(object):
         """
         Returns a minimal Decor with a random colour.
         """
-        colour = np.random.rand(3,)
+        colour = random.sample([i for i in range(256)], 3)
         return cls({'colour': colour, 'component': component})
 
     @property
@@ -177,8 +178,8 @@ class Decor(object):
 
         u = 1  # A bit arbitrary; some sort of scale
 
-        plt.figure(figsize=(1, 1))
-        ax = plt.subplot(111)
+        fig = plt.figure(figsize=(1, 1))
+        ax = fig.add_subplot(111)
         rect1 = patches.Rectangle((0, 0),
                                   u, u,
                                   color=self.colour)
@@ -459,7 +460,7 @@ class Legend(object):
         Returns:
            component. The component best matching the provided colour.
         """
-        if not (0 <= tolerance <= np.sqrt(195075)):
+        if not (0 <= tolerance <= math.sqrt(195075)):
             raise LegendError('Tolerance must be between 0 and 441.67')
 
         for decor in self.__list:
@@ -471,12 +472,12 @@ class Legend(object):
 
         # Start with a best match of black.
         best_match = '#000000'
-        best_match_dist = np.sqrt(r1**2. + g1**2. + b1**2.)
+        best_match_dist = math.sqrt(r1**2. + g1**2. + b1**2.)
 
         # Now compare to each colour in the legend.
         for decor in self.__list:
             r2, g2, b2 = decor.rgb
-            distance = np.sqrt((r2-r1)**2. + (g2-g1)**2. + (b2-b1)**2.)
+            distance = math.sqrt((r2-r1)**2. + (g2-g1)**2. + (b2-b1)**2.)
             if distance < best_match_dist:
                 best_match = decor.component
                 best_match_dist = distance

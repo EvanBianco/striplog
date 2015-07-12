@@ -51,6 +51,12 @@ class Component(object):
             s.append(t.format(key=key, value=self.__dict__[key]))
         return ', '.join(s)
 
+    def __getitem__(self, key):
+        """
+        So we can get at attributes with variables.
+        """
+        return self.__dict__.get(key)
+
     def __bool__(self):
         if not self.__dict__.keys():
             return False
@@ -82,6 +88,17 @@ class Component(object):
     # keys. (You can only hash immutables.)
     def __hash__(self):
         return hash(frozenset(self.__dict__.keys()))
+
+    def _repr_html_(self):
+        """
+        IPython Notebook magic repr function.
+        """
+        rows = ''
+        s = '<tr><td><strong>{k}</strong></td><td>{v}</td></tr>'
+        for k, v in self.__dict__.items():
+            rows += s.format(k=k, v=v)
+        html = '<table>{}</table>'.format(rows)
+        return html
 
     @classmethod
     def from_text(cls, text, lexicon, required=None, first_only=True):
@@ -139,9 +156,8 @@ class Component(object):
                 flist.append(item)
             string = string.strip(', ')
         else:
-            fmt = re.sub(r'%%', '_percent_', fmt)
+            fmt = re.sub(r'  ', '_dblspc_', fmt)
             string = re.sub(r'\{(\w+)\}', '{}', fmt)
-            string = re.sub(r'_percent_', '%', string)
             flist = re.findall(r'\{(\w+)\}', fmt)
 
         words = []
@@ -162,5 +178,9 @@ class Component(object):
 
         if initial and summary:
             summary = summary[0].upper() + summary[1:]
+
+        # Tidy up double spaces
+        summary = re.sub(r'  ', ' ', summary)
+        summary = re.sub(r'_dblspc_', '  ', summary)
 
         return summary
